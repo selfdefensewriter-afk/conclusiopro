@@ -223,78 +223,88 @@ async def get_current_user(request: Request) -> User:
     
     return User(**user_doc)
 
-# Auth Routes
-@api_router.post("/auth/session")
-async def create_session(request: Request, response: Response):
-    data = await request.json()
-    session_id = data.get("session_id")
+# Auth Routes - Google OAuth
+@api_router.get("/auth/google/login")
+async def google_login(request: Request):
+    """Initiate Google OAuth login"""
+    frontend_url = os.environ.get('FRONTEND_URL', 'https://conclusiopro-frontend.onrender.com')
+    redirect_uri = os.environ.get('BACKEND_URL', str(request.base_url).rstrip('/')) + '/api/auth/google/callback'
     
-    if not session_id:
-        raise HTTPException(status_code=400, detail="session_id requis")
+    # Store the frontend URL in session for redirect after auth
+    request.session['frontend_redirect'] = frontend_url + '/dashboard'
     
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-            headers={"X-Session-ID": session_id}
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@api_router.get("/auth/google/callback")
+async def google_callback(request: Request, response: Response):
+    """Handle Google OAuth callback"""
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        user_info = token.get('userinfo')
+        
+        if not user_info:
+            raise HTTPException(status_code=400, detail="Could not get user info")
+        
+        # Find or create user
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        existing_user = await db.users.find_one(
+            {"email": user_info["email"]},
+            {"_id": 0}
         )
         
-        if resp.status_code != 200:
-            raise HTTPException(status_code=400, detail="Session invalide")
+        if existing_user:
+            user_id = existing_user["user_id"]
+            await db.users.update_one(
+                {"user_id": user_id},
+                {"$set": {
+                    "name": user_info.get("name", ""),
+                    "picture": user_info.get("picture")
+                }}
+            )
+        else:
+            user_doc = {
+                "user_id": user_id,
+                "email": user_info["email"],
+                "name": user_info.get("name", ""),
+                "picture": user_info.get("picture"),
+                "credits": 0,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.users.insert_one(user_doc)
         
-        user_data = resp.json()
-    
-    user_id = f"user_{uuid.uuid4().hex[:12]}"
-    existing_user = await db.users.find_one(
-        {"email": user_data["email"]},
-        {"_id": 0}
-    )
-    
-    if existing_user:
-        user_id = existing_user["user_id"]
-        await db.users.update_one(
-            {"user_id": user_id},
-            {"$set": {
-                "name": user_data["name"],
-                "picture": user_data.get("picture")
-            }}
-        )
-    else:
-        user_doc = {
+        # Create session
+        session_token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        
+        session_doc = {
             "user_id": user_id,
-            "email": user_data["email"],
-            "name": user_data["name"],
-            "picture": user_data.get("picture"),
-            "credits": 0,
+            "session_token": session_token,
+            "expires_at": expires_at.isoformat(),
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-        await db.users.insert_one(user_doc)
-    
-    session_token = user_data["session_token"]
-    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-    
-    session_doc = {
-        "user_id": user_id,
-        "session_token": session_token,
-        "expires_at": expires_at.isoformat(),
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.user_sessions.insert_one(session_doc)
-    
-    response.set_cookie(
-        key="session_token",
-        value=session_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=7*24*60*60,
-        path="/"
-    )
-    
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    if isinstance(user['created_at'], str):
-        user['created_at'] = datetime.fromisoformat(user['created_at'])
-    
-    return User(**user)
+        await db.user_sessions.insert_one(session_doc)
+        
+        # Get frontend redirect URL
+        frontend_redirect = request.session.get('frontend_redirect', 'https://conclusiopro-frontend.onrender.com/dashboard')
+        
+        # Create redirect response with cookie
+        redirect_response = RedirectResponse(url=frontend_redirect, status_code=302)
+        redirect_response.set_cookie(
+            key="session_token",
+            value=session_token,
+            httponly=True,
+            secure=True,
+            samesite="none",
+            max_age=7*24*60*60,
+            path="/"
+        )
+        
+        return redirect_response
+        
+    except Exception as e:
+        logger.error(f"OAuth callback error: {str(e)}")
+        frontend_url = os.environ.get('FRONTEND_URL', 'https://conclusiopro-frontend.onrender.com')
+        return RedirectResponse(url=f"{frontend_url}?error=auth_failed", status_code=302)
 
 @api_router.get("/auth/me")
 async def get_me(current_user: User = Depends(get_current_user)):
@@ -307,7 +317,7 @@ async def logout(request: Request, response: Response, current_user: User = Depe
     if session_token:
         await db.user_sessions.delete_many({"session_token": session_token})
     
-    response.delete_cookie(key="session_token", path="/")
+    response.delete_cookie(key="session_token", path="/", samesite="none", secure=True)
     return {"message": "Déconnexion réussie"}
 
 # Code Civil Routes
