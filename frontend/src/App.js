@@ -1,8 +1,7 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import './App.css';
 import LandingPage from './pages/LandingPage';
-import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import NewConclusion from './pages/NewConclusion';
 import ConclusionEditor from './pages/ConclusionEditor';
@@ -13,13 +12,7 @@ import PaymentSuccess from './pages/PaymentSuccess';
 import ProtectedRoute from './components/ProtectedRoute';
 import { Toaster } from './components/ui/sonner';
 
-function AppRouter() {
-  const location = useLocation();
-  
-  if (location.hash?.includes('session_id=')) {
-    return <AuthCallback />;
-  }
-  
+function AppRouter() {  
   return (
     <>
       <Routes>
