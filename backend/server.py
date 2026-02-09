@@ -1,7 +1,8 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, UploadFile, File, Form
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -11,6 +12,7 @@ from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
 import httpx
+from authlib.integrations.starlette_client import OAuth
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionResponse, CheckoutStatusResponse, CheckoutSessionRequest
 from reportlab.lib.pagesizes import A4
@@ -23,6 +25,7 @@ import io
 import json
 import aiofiles
 import shutil
+import secrets
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -34,12 +37,29 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 # Max file size: 10 MB
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
+# Session secret key
+SESSION_SECRET = os.environ.get('SESSION_SECRET', secrets.token_hex(32))
+
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 app = FastAPI()
+
+# Add session middleware for OAuth
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
+
 api_router = APIRouter(prefix="/api")
+
+# Google OAuth configuration
+oauth = OAuth()
+oauth.register(
+    name='google',
+    client_id=os.environ.get('GOOGLE_CLIENT_ID'),
+    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET'),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'}
+)
 
 logging.basicConfig(
     level=logging.INFO,
