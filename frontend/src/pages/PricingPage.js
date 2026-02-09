@@ -28,9 +28,9 @@ const PricingPage = () => {
     } catch (error) {
       console.error('Payment error:', error);
       if (error.response?.status === 401) {
-        // User not logged in
-        const redirectUrl = window.location.origin + '/tarifs';
-        window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+        // User not logged in - redirect to Google OAuth
+        const backendUrl = process.env.REACT_APP_BACKEND_URL;
+        window.location.href = `${backendUrl}/api/auth/google/login`;
       } else {
         alert('Erreur lors de la création du paiement. Veuillez réessayer.');
         setLoading(false);
@@ -39,8 +39,8 @@ const PricingPage = () => {
   };
 
   const handleGetStarted = () => {
-    const redirectUrl = window.location.origin + '/dashboard';
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+    const backendUrl = process.env.REACT_APP_BACKEND_URL;
+    window.location.href = `${backendUrl}/api/auth/google/login`;
   };
 
   const plans = [
