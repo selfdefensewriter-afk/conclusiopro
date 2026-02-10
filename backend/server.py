@@ -239,11 +239,19 @@ async def google_login(request: Request):
 async def google_callback(request: Request, response: Response):
     """Handle Google OAuth callback"""
     try:
+        logger.info("OAuth callback received")
         token = await oauth.google.authorize_access_token(request)
-        user_info = token.get('userinfo')
+        logger.info(f"Token received: {bool(token)}")
         
+        user_info = token.get('userinfo')
         if not user_info:
-            raise HTTPException(status_code=400, detail="Could not get user info")
+            # Try to get from id_token
+            user_info = token.get('id_token')
+            if not user_info:
+                logger.error("No user info in token")
+                raise HTTPException(status_code=400, detail="Could not get user info")
+        
+        logger.info(f"User info: {user_info.get('email', 'no email')}")
         
         # Find or create user
         user_id = f"user_{uuid.uuid4().hex[:12]}"
@@ -261,6 +269,7 @@ async def google_callback(request: Request, response: Response):
                     "picture": user_info.get("picture")
                 }}
             )
+            logger.info(f"User updated: {user_id}")
         else:
             user_doc = {
                 "user_id": user_id,
@@ -271,6 +280,7 @@ async def google_callback(request: Request, response: Response):
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await db.users.insert_one(user_doc)
+            logger.info(f"User created: {user_id}")
         
         # Create session
         session_token = secrets.token_urlsafe(32)
@@ -283,9 +293,11 @@ async def google_callback(request: Request, response: Response):
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         await db.user_sessions.insert_one(session_doc)
+        logger.info(f"Session created for user: {user_id}")
         
         # Get frontend redirect URL
-        frontend_redirect = request.session.get('frontend_redirect', 'https://conclusiopro-frontend.onrender.com/dashboard')
+        frontend_url = os.environ.get('FRONTEND_URL', 'https://conclusiopro-frontend.onrender.com')
+        frontend_redirect = f"{frontend_url}/dashboard"
         
         # Create redirect response with cookie
         redirect_response = RedirectResponse(url=frontend_redirect, status_code=302)
@@ -296,13 +308,15 @@ async def google_callback(request: Request, response: Response):
             secure=True,
             samesite="none",
             max_age=7*24*60*60,
-            path="/"
+            path="/",
+            domain=None
         )
         
+        logger.info(f"Redirecting to: {frontend_redirect}")
         return redirect_response
         
     except Exception as e:
-        logger.error(f"OAuth callback error: {str(e)}")
+        logger.error(f"OAuth callback error: {str(e)}", exc_info=True)
         frontend_url = os.environ.get('FRONTEND_URL', 'https://conclusiopro-frontend.onrender.com')
         return RedirectResponse(url=f"{frontend_url}?error=auth_failed", status_code=302)
 
