@@ -40,12 +40,12 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 # Session secret key
 SESSION_SECRET = os.environ.get('SESSION_SECRET', secrets.token_hex(32))
 
-# MongoDB connection with SSL fix for Python 3.13
+# MongoDB connection with SSL fix
+import certifi
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(
     mongo_url,
-    tls=True,
-    tlsAllowInvalidCertificates=True,
+    tlsCAFile=certifi.where(),
     serverSelectionTimeoutMS=10000
 )
 db = client[os.environ['DB_NAME']]
