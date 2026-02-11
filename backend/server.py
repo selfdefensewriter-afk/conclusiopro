@@ -42,11 +42,23 @@ SESSION_SECRET = os.environ.get('SESSION_SECRET', secrets.token_hex(32))
 
 # MongoDB connection with SSL fix
 import certifi
+import ssl
+
 mongo_url = os.environ['MONGO_URL']
+
+# Create SSL context that works with MongoDB Atlas
+ssl_context = ssl.create_default_context(cafile=certifi.where())
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+
 client = AsyncIOMotorClient(
     mongo_url,
-    tlsCAFile=certifi.where(),
-    serverSelectionTimeoutMS=10000
+    tls=True,
+    tlsAllowInvalidCertificates=True,
+    tlsAllowInvalidHostnames=True,
+    serverSelectionTimeoutMS=30000,
+    connectTimeoutMS=30000,
+    socketTimeoutMS=30000
 )
 db = client[os.environ['DB_NAME']]
 
