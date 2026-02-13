@@ -4,7 +4,7 @@ from datetime import datetime
 import json
 import os
 
-BACKEND_URL = "https://conclusion-draft.preview.emergentagent.com"
+BACKEND_URL = "https://conclusion-pro.preview.emergentagent.com"
 
 class LegalAppTester:
     def __init__(self):
