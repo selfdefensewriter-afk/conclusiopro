@@ -542,7 +542,7 @@ async def create_checkout(
         currency=package["currency"],
         package_id=data.package_id,
         payment_status="pending",
-        metadata=checkout_request.metadata,
+        payment_metadata=checkout_request.metadata,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc)
     )
