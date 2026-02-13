@@ -13,18 +13,26 @@ services:
     startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
-      - key: MONGO_URL
-        sync: false # Set manually in dashboard
-      - key: DB_NAME
-        value: conclusiopro
+      - key: DATABASE_URL
+        fromDatabase:
+          name: conclusiopro-db
+          property: connectionString
       - key: CORS_ORIGINS
         value: "*"
       - key: BACKEND_URL
         sync: false # Set after deployment with generated URL
+      - key: FRONTEND_URL
+        sync: false # Set after frontend deployment
+      - key: GOOGLE_CLIENT_ID
+        sync: false # Set manually
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false # Set manually
       - key: EMERGENT_LLM_KEY
         sync: false # Set manually
       - key: STRIPE_API_KEY
         sync: false # Set manually
+      - key: SESSION_SECRET
+        generateValue: true
 
   # Frontend (React Static Site)
   - type: web
@@ -46,3 +54,9 @@ services:
     envVars:
       - key: REACT_APP_BACKEND_URL
         sync: false # Set after backend deployment
+
+databases:
+  - name: conclusiopro-db
+    databaseName: conclusiopro
+    plan: free
+    region: frankfurt
