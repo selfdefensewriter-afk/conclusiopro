@@ -1,13 +1,7 @@
 {
   "buildCommand": "cd frontend && yarn build",
   "outputDirectory": "frontend/build",
-  "framework": null,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.py" }
-  ],
-  "functions": {
-    "api/index.py": {
-      "runtime": "python3.11"
-    }
-  }
+    { "source": "/api/(.*)", "destination": "/api" }
+  ]
 }
