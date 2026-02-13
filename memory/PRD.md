@@ -13,11 +13,12 @@ Application web "Self-Defense Writer" pour aider les particuliers à rédiger le
 
 ## Tech Stack
 - **Frontend:** React 19, Tiptap (éditeur riche), TailwindCSS, Shadcn/UI
-- **Backend:** FastAPI (Python), Motor (MongoDB async)
-- **Database:** MongoDB
-- **Auth:** Google OAuth 2.0 (via Emergent Auth)
+- **Backend:** FastAPI (Python), SQLAlchemy
+- **Database:** PostgreSQL (migré de MongoDB le 13/02/2026)
+- **Auth:** Google OAuth 2.0 (custom avec Authlib)
 - **Payments:** Stripe Checkout
 - **AI:** Google Gemini (Emergent LLM Key)
+- **Deployment:** Render.com (backend + frontend + PostgreSQL)
 
 ## What's Been Implemented
 
@@ -37,11 +38,15 @@ Application web "Self-Defense Writer" pour aider les particuliers à rédiger le
   - Réorganisation par drag & drop
   - Insertion de références dans le texte (ex: "voir Pièce n°3")
   - Bordereau de pièces généré automatiquement
-  - **Prévisualisation** des images et PDF directement dans l'interface (ajouté le 09/02/2025)
+  - **Prévisualisation** des images et PDF directement dans l'interface
 
-### Bug Fixes
+### Bug Fixes & Migrations
 - [x] **09/02/2025:** Corrigé erreur `findDOMNode is not a function` - remplacement de react-quill par Tiptap
 - [x] **09/02/2025:** Corrigé route FastAPI pour `/pieces/reorder` (ordre des routes)
+- [x] **13/02/2026:** **MIGRATION POSTGRESQL** - Résolu le problème de connexion SSL MongoDB Atlas sur Render
+  - Migré la base de données de MongoDB/Motor vers PostgreSQL/SQLAlchemy
+  - Toutes les tables créées: users, user_sessions, legal_conclusions, pieces, payment_transactions, code_civil_articles, conclusion_templates
+  - L'authentification Google OAuth fonctionne maintenant correctement
 
 ## API Endpoints - Pièces
 
@@ -59,8 +64,17 @@ Application web "Self-Defense Writer" pour aider les particuliers à rédiger le
 
 ## Prioritized Backlog
 
+### P0 - RESOLVED
+- [x] **CRITIQUE:** Authentification cassée sur Render - **RÉSOLU via migration PostgreSQL**
+
 ### P1 - Next Tasks
-- [ ] Réintroduire les offres "Avancée" et "Sérénité" sur la page Pricing (après implémentation des fonctionnalités)
+- [ ] Déployer les changements sur Render.com
+  - Push le code vers GitHub
+  - Mettre à jour les variables d'environnement sur Render:
+    - `DATABASE_URL` = URL interne PostgreSQL
+    - `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET`
+    - `FRONTEND_URL` et `BACKEND_URL`
+- [ ] Réintroduire les offres "Avancée" et "Sérénité" sur la page Pricing
 
 ### P2 - Future Features
 - [ ] **Offre Avancée:** Aide à la clarté, ton neutre, style judiciaire, vérifications formelles
@@ -76,9 +90,10 @@ Application web "Self-Defense Writer" pour aider les particuliers à rédiger le
 ```
 /app
 ├── backend/
-│   ├── server.py          # FastAPI app avec toutes les routes
+│   ├── server.py          # FastAPI app avec SQLAlchemy (PostgreSQL)
 │   ├── uploads/pieces/    # Stockage des fichiers uploadés
-│   └── requirements.txt
+│   ├── requirements.txt   # Inclut psycopg2-binary, sqlalchemy, asyncpg
+│   └── .env               # DATABASE_URL, GOOGLE_*, etc.
 ├── frontend/
 │   ├── src/
 │   │   ├── pages/
@@ -92,45 +107,95 @@ Application web "Self-Defense Writer" pour aider les particuliers à rédiger le
 │   │   ├── styles/tiptap.css
 │   │   └── ...
 │   └── package.json
+├── render.yaml            # Configuration Render.com (PostgreSQL)
 └── docs/
     ├── FAQ.md
     ├── CGU.md
     └── offre.md
 ```
 
-## Key DB Schemas
+## Key DB Schemas (PostgreSQL)
 
 ### users
-```json
-{
-  "user_id": "string",
-  "email": "string",
-  "name": "string",
-  "picture": "string",
-  "credits": "int",
-  "created_at": "datetime"
-}
+```sql
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  user_id VARCHAR(50) UNIQUE NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  name VARCHAR(255),
+  picture TEXT,
+  credits INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE
+);
+```
+
+### user_sessions
+```sql
+CREATE TABLE user_sessions (
+  id SERIAL PRIMARY KEY,
+  user_id VARCHAR(50) NOT NULL,
+  session_token VARCHAR(255) UNIQUE NOT NULL,
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE
+);
+```
+
+### legal_conclusions
+```sql
+CREATE TABLE legal_conclusions (
+  id SERIAL PRIMARY KEY,
+  conclusion_id VARCHAR(50) UNIQUE NOT NULL,
+  user_id VARCHAR(50) NOT NULL,
+  type VARCHAR(50) NOT NULL,
+  parties JSON,
+  faits TEXT,
+  demandes TEXT,
+  conclusion_text TEXT,
+  status VARCHAR(50) DEFAULT 'draft',
+  created_at TIMESTAMP WITH TIME ZONE,
+  updated_at TIMESTAMP WITH TIME ZONE
+);
 ```
 
 ### pieces
-```json
-{
-  "piece_id": "string",
-  "conclusion_id": "string",
-  "user_id": "string",
-  "numero": "int",
-  "nom": "string",
-  "description": "string",
-  "filename": "string",
-  "original_filename": "string",
-  "file_size": "int",
-  "mime_type": "string",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
+```sql
+CREATE TABLE pieces (
+  id SERIAL PRIMARY KEY,
+  piece_id VARCHAR(50) UNIQUE NOT NULL,
+  conclusion_id VARCHAR(50) NOT NULL,
+  user_id VARCHAR(50) NOT NULL,
+  numero INTEGER NOT NULL,
+  nom VARCHAR(255) NOT NULL,
+  description TEXT,
+  filename VARCHAR(255) NOT NULL,
+  original_filename VARCHAR(255) NOT NULL,
+  file_size INTEGER NOT NULL,
+  mime_type VARCHAR(100) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE,
+  updated_at TIMESTAMP WITH TIME ZONE
+);
 ```
 
 ## Legal Compliance
 - Disclaimer omniprésent: "Cette application ne fournit aucun conseil juridique et ne remplace pas un avocat"
 - L'IA fournit des suggestions pédagogiques, pas des conseils juridiques personnalisés
 - Pages FAQ et CGU avec contenu validé juridiquement
+
+## Deployment Instructions (Render.com)
+
+### Variables d'environnement Backend
+```
+DATABASE_URL=postgresql://conclusiopro:xxx@dpg-xxx-a/conclusiopro (URL interne)
+GOOGLE_CLIENT_ID=votre_client_id
+GOOGLE_CLIENT_SECRET=votre_client_secret
+FRONTEND_URL=https://conclusiopro-frontend.onrender.com
+BACKEND_URL=https://conclusiopro-backend.onrender.com
+SESSION_SECRET=généré_automatiquement
+EMERGENT_LLM_KEY=votre_clé (optionnel, pour génération IA)
+STRIPE_API_KEY=votre_clé (optionnel, pour paiements)
+```
+
+### Variables d'environnement Frontend
+```
+REACT_APP_BACKEND_URL=https://conclusiopro-backend.onrender.com
+```
