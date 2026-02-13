@@ -113,7 +113,7 @@ class PaymentTransactionModel(Base):
     currency = Column(String(10), nullable=False)
     package_id = Column(String(50), nullable=False)
     payment_status = Column(String(50), default="pending")
-    metadata = Column(JSON, nullable=True)
+    payment_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
